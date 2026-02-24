@@ -1,0 +1,6 @@
+bool attach
+string payload_name
+float64 mass
+---
+bool success
+string message
