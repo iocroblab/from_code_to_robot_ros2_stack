@@ -2,7 +2,7 @@ repositories:
   Universal_Robots_Client_Library:
     type: git
     url: https://github.com/UniversalRobots/Universal_Robots_Client_Library.git
-    version: main
+    version: master
 
   Universal_Robots_ROS2_Description:
     type: git
@@ -23,4 +23,4 @@ repositories:
   joint_state_publisher:
     type: git
     url: https://github.com/ros/joint_state_publisher.git
-    version: main
+    version: ros2
