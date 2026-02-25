@@ -5,7 +5,7 @@
   <version>0.0.0</version>
   <description>TODO: Package description</description>
   <maintainer email="constantin.sul@estudiantat.upc.edu">constanin sul</maintainer>
-  <license>TODO: License declaration</license>
+  <license>Apache-2.0</license>
 
 
   <exec_depend>sensor_msgs</exec_depend>

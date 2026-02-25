@@ -5,7 +5,7 @@
   <description>Keyboard teleop for publishing geometry_msgs/Twist with linear/rotation toggle (TAB).</description>
 
   <maintainer email="constantin.sul@estudiantat.upc.edu">Constantin Sul</maintainer>
-
+  <license>Apache-2.0</license>
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
