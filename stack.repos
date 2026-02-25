@@ -7,17 +7,17 @@ repositories:
   Universal_Robots_ROS2_Description:
     type: git
     # For PRIVATE stack, keep gitioc URL. For PUBLIC mirror, swap this URL.
-    url: https://gitioc.upc.edu/constantin.sul/universal_robots_ros2_description_tutorial.git
+    url: https://gitioc.upc.edu/robots/universal_robots_ros2_description_tutorial.git
     version: jazzy
 
   Universal_Robots_ROS2_Driver:
     type: git
-    url: https://gitioc.upc.edu/constantin.sul/universal_robots_ros2_driver_tutorial.git
+    url: https://gitioc.upc.edu/robots/universal_robots_ros2_driver_tutorial.git
     version: jazzy
 
   Universal_Robots_ROS2_GZ_Simulation:
     type: git
-    url: https://gitioc.upc.edu/constantin.sul/universal_robots_ros2_gz_simulation_tutorial.git
+    url: https://gitioc.upc.edu/robots/universal_robots_ros2_gz_simulation_tutorial.git
     version: jazzy
 
   joint_state_publisher:
