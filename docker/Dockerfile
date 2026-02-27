@@ -155,7 +155,7 @@ RUN sed -i '/\[supervisord\]/a user=root' /etc/supervisor/supervisord.conf
 
 RUN apt-get update && apt-get install -y git
 
-WORKDIR /home/user/git_ws
+WORKDIR /home/user/fctr_ws
 RUN mkdir -p src/modified-repositories && \
     cd src && \
     git clone -b jazzy --depth 1 https://github.com/iocroblab/from_code_to_robot_ros2_stack.git  && \
