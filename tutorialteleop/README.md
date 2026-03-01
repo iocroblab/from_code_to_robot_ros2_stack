@@ -4,7 +4,7 @@ Keyboard teleoperation package for publishing `geometry_msgs/msg/Twist` commands
 
 ## What it does
 
-Both executables publish:
+The node publishes:
 
 - `geometry_msgs/msg/Twist` on `cmd_vel` by default
 - `std_msgs/msg/String` on `teleop_mode`
@@ -18,15 +18,15 @@ The teleop interface supports:
 
 - `W/A/S/D` for planar motion
 - `Space` for positive Z
+- `-` for negative Z
+- `Shift` with motion keys for `2x` speed
 - `Tab` to toggle between linear and rotation mode
 - `M` to toggle the reference frame
-- `Shift` to double the command speed
-- `Q` or `Esc` to quit
+- `Ctrl-C` to quit
 
-Executables:
+Executable:
 
-- `tutorial_teleop`: terminal-friendly version using `-` for negative Z
-- `tutorial_teleop_global`: alternate version using `Ctrl` for negative Z
+- `tutorial_teleop`: focused local teleop window, only reacts while that window is focused
 
 ## Build
 
@@ -45,12 +45,6 @@ Run the main teleop node:
 ros2 run tutorialteleop tutorial_teleop
 ```
 
-Run the alternate variant:
-
-```bash
-ros2 run tutorialteleop tutorial_teleop_global
-```
-
 Example with custom speeds and topic:
 
 ```bash
@@ -60,3 +54,5 @@ ros2 run tutorialteleop tutorial_teleop --ros-args -p linear_speed:=0.1 -p angul
 ## Notes
 
 This package does not include a launch file. It is usually started in a separate terminal after the robot simulation or control stack is already running.
+
+The node opens a small local Tk window and only reacts while that window is focused. This also allows proper key hold/release handling and combinations such as `W+A`.

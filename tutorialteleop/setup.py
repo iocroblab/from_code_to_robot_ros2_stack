@@ -23,7 +23,6 @@ setup(
     entry_points={
         'console_scripts': [
             'tutorial_teleop = tutorialteleop.teleop:main',
-            'tutorial_teleop_global = tutorialteleop.teleop_global:main',
         ],
     },
 )

@@ -1,171 +1,202 @@
 #!/usr/bin/env python3
-import sys
 import threading
-import shutil
-import termios
-from typing import List, Optional, Set
+import time
+import tkinter as tk
 
 import rclpy
-from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 from geometry_msgs.msg import Twist
+from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
 
-from pynput import keyboard
-from pynput.keyboard import Key, KeyCode
-
-# ---------- terminal helpers (fixed-width panel) ----------
-CSI = "\x1b["
-PANEL_WIDTH = 50  # fixed; ensure your terminal is >= this
+WINDOW_BG = "#f4f1e8"
+PANEL_BG = "#fffdf7"
+ACCENT = "#1f5f5b"
+TEXT = "#1f2421"
 
 
-def _cursor_hide():
-    sys.stdout.write(CSI + "?25l")
-    sys.stdout.flush()
+def _movement_token(keysym: str):
+    mapping = {
+        "w": "w",
+        "a": "a",
+        "s": "s",
+        "d": "d",
+        "space": "z_plus",
+        "minus": "z_minus",
+        "underscore": "z_minus",
+        "KP_Subtract": "z_minus",
+    }
+    return mapping.get(keysym)
 
 
-def _cursor_show():
-    sys.stdout.write(CSI + "?25h")
-    sys.stdout.flush()
+def _normalized_keysym(keysym: str) -> str:
+    if len(keysym) == 1:
+        return keysym.lower()
+    return keysym
 
 
-def _move_to(row: int, col: int = 1):
-    sys.stdout.write(f"{CSI}{row};{col}H")
-
-
-def _clear_line():
-    sys.stdout.write(CSI + "2K")
-
-
-def _save():
-    sys.stdout.write("\x1b7")
-
-
-def _restore():
-    sys.stdout.write("\x1b8")
-
-
-class _NoEcho:
-    """Disable echo locally in this TTY (like teleop_twist_keyboard)."""
-
-    def __init__(self):
-        self.fd = None
-        self.old = None
-        try:
-            self.fd = sys.stdin.fileno()
-            self.old = termios.tcgetattr(self.fd)
-            new = termios.tcgetattr(self.fd)
-            new[3] &= ~termios.ECHO
-            termios.tcsetattr(self.fd, termios.TCSADRAIN, new)
-        except Exception:
-            self.fd = None
-            self.old = None
-
-    def restore(self):
-        if self.fd is not None and self.old is not None:
-            try:
-                termios.tcsetattr(self.fd, termios.TCSADRAIN, self.old)
-            except Exception:
-                pass
-
-
-class BottomPanel:
-    def __init__(self):
-        self.rows, self.cols = shutil.get_terminal_size((24, 80))
-        self.enabled = sys.stdout.isatty()
-        if self.enabled:
-            _cursor_hide()
-        self.mode = "Linear"
-        self.frame = "Base"
-
-    def _header(self) -> List[str]:
-        bar = "-" * PANEL_WIDTH
-        line1 = " Teleoperation | Q/ESC: quit "
-        line2 = f" Mode: {self.mode} | Frame: {self.frame}"
-        return [
-            bar,
-            line1[:PANEL_WIDTH].ljust(PANEL_WIDTH),
-            line2[:PANEL_WIDTH].ljust(PANEL_WIDTH),
-            bar,
-        ]
-
-    def _map_block(self) -> List[str]:
-        if self.mode == "Linear":
-            w, s, a, d, sp, mn = "+X", "-X", "-Y", "+Y", "+Z", "-Z"
-        else:
-            w, s, a, d, sp, mn = "+RotX", "-RotX", "-RotY", "+RotY", "+RotZ", "-RotZ"
-        body = [
-            "",
-            "                [ W ]           -> " + w,
-            "         [ A ]         [ D ]    -> " + f"{a} / {d}",
-            "                [ S ]           -> " + s,
-            "",
-            "    [ SPACE ]  -> " + f"{sp:<6}",
-            "    [  -  ]    -> " + mn,
-            "",
-            "   Keys:  TAB toggle mode (Linear <-> Rotation)",
-            "          M toggle ref frame (Base <-> EndEffector)",
-            "          SHIFT hold: x2 speed",
-        ]
-        return [ln[:PANEL_WIDTH].ljust(PANEL_WIDTH) for ln in body]
-
-    def draw(self):
-        if not self.enabled:
-            return
-        block = self._header() + self._map_block() + ["-" * PANEL_WIDTH]
-        self.rows, _ = shutil.get_terminal_size((24, 80))
-        top_row = max(1, self.rows - len(block) + 1)
-        _save()
-        row = top_row
-        for ln in block:
-            _move_to(row, 1)
-            _clear_line()
-            sys.stdout.write(ln + "\n")
-            row += 1
-        sys.stdout.flush()
-        _restore()
-
-    def restore(self):
-        if self.enabled:
-            _cursor_show()
-
-
-# ---------- key canonicalization ----------
-SHIFT_KEYS = {k for k in (getattr(Key, n, None) for n in ("shift", "shift_l", "shift_r")) if k}
-
-
-def _to_token(key: object) -> Optional[str]:
-    """Map pynput Key/KeyCode to stable tokens so press/release always match."""
-    if key in SHIFT_KEYS:
+def _event_token(event) -> str | None:
+    keysym = _normalized_keysym(event.keysym)
+    if keysym in ("Shift_L", "Shift_R"):
         return "shift"
-    if key == Key.space:
-        return "space"
-    if key == Key.tab:
-        return "tab"
-    if key == Key.esc:
-        return "esc"
-    if isinstance(key, KeyCode) and key.char:
-        return key.char.lower()
-    return None
+    if keysym == "Tab":
+        return "Tab"
+    if keysym in ("m", "M"):
+        return "m"
+    return _movement_token(keysym)
 
 
-# ---------- teleop logic ----------
+class TeleopWindow:
+    def __init__(self, node: "TutorialTeleop"):
+        self.node = node
+        self.root = tk.Tk()
+        self.root.title("tutorialteleop")
+        self.root.configure(bg=WINDOW_BG, padx=18, pady=18)
+        self.root.geometry("600x280")
+        self.root.resizable(False, False)
+        self.root.protocol("WM_DELETE_WINDOW", self._ignore_close)
+
+        title = tk.Label(
+            self.root,
+            text="Teleoperation",
+            bg=WINDOW_BG,
+            fg=TEXT,
+            font=("TkDefaultFont", 18, "bold"),
+        )
+        title.pack(anchor="w")
+
+        subtitle = tk.Label(
+            self.root,
+            text="Focus this window to drive. Use Ctrl-C here or in the terminal to quit.",
+            bg=WINDOW_BG,
+            fg=TEXT,
+            font=("TkDefaultFont", 10),
+            justify="left",
+            anchor="w",
+            wraplength=540,
+        )
+        subtitle.pack(anchor="w", pady=(2, 12))
+
+        panel = tk.Frame(self.root, bg=PANEL_BG, highlightbackground=ACCENT, highlightthickness=2)
+        panel.pack(fill="both", expand=True)
+
+        self.status_var = tk.StringVar()
+        self.mapping_var = tk.StringVar()
+        self.focus_var = tk.StringVar(value="Focus: active")
+
+        self.status_label = tk.Label(
+            panel,
+            textvariable=self.status_var,
+            justify="left",
+            anchor="w",
+            bg=PANEL_BG,
+            fg=TEXT,
+            font=("TkDefaultFont", 12, "bold"),
+        )
+        self.status_label.pack(fill="x", padx=16, pady=(16, 10))
+
+        self.mapping_label = tk.Label(
+            panel,
+            textvariable=self.mapping_var,
+            justify="left",
+            anchor="w",
+            bg=PANEL_BG,
+            fg=TEXT,
+            font=("TkFixedFont", 12),
+        )
+        self.mapping_label.pack(fill="x", padx=16)
+
+        self.focus_label = tk.Label(
+            panel,
+            textvariable=self.focus_var,
+            justify="left",
+            anchor="w",
+            bg=PANEL_BG,
+            fg=ACCENT,
+            font=("TkDefaultFont", 10, "bold"),
+        )
+        self.focus_label.pack(fill="x", padx=16, pady=(14, 16))
+
+        self.root.bind("<KeyPress>", self.node.on_key_press)
+        self.root.bind("<KeyRelease>", self.node.on_key_release)
+        self.root.bind("<Control-c>", self.node.on_ctrl_c)
+        self.root.bind("<Control-C>", self.node.on_ctrl_c)
+        self.root.bind("<FocusIn>", self._on_focus_in)
+        self.root.bind("<FocusOut>", self._on_focus_out)
+        self.root.focus_force()
+        self.root.after(50, self._focus_window)
+        self.refresh()
+
+    def _ignore_close(self):
+        return
+
+    def _focus_window(self):
+        try:
+            self.root.focus_force()
+        except tk.TclError:
+            pass
+
+    def _on_focus_in(self, _event):
+        self.focus_var.set("Focus: active")
+
+    def _on_focus_out(self, _event):
+        self.focus_var.set("Focus: inactive")
+        self.node.clear_pressed_keys()
+
+    def refresh(self):
+        mode = self.node.mode_str()
+        frame = self.node.frame_str()
+        if mode == "Linear":
+            z_pos = "+Z"
+            z_neg = "-Z"
+            wx = "+X / -X"
+            wy = "-Y / +Y"
+        else:
+            z_pos = "+RotZ"
+            z_neg = "-RotZ"
+            wx = "+RotX / -RotX"
+            wy = "-RotY / +RotY"
+
+        self.status_var.set(f"Mode: {mode}    Frame: {frame}")
+        self.mapping_var.set(
+            "W / S -> {wx}\n"
+            "A / D -> {wy}\n"
+            "Space / - (minus) -> {zp} / {zn}\n"
+            "Shift doubles speed, Tab toggles mode, M toggles reference frame".format(
+                wx=wx,
+                wy=wy,
+                zp=z_pos,
+                zn=z_neg,
+            )
+        )
+
+    def pump(self):
+        self.root.update_idletasks()
+        self.root.update()
+
+    def destroy(self):
+        try:
+            self.root.destroy()
+        except tk.TclError:
+            pass
+
+
 class TutorialTeleop(Node):
     def __init__(self):
         super().__init__("tutorial_teleop")
 
-        # Params
         self.declare_parameter("linear_speed", 0.2)
         self.declare_parameter("angular_speed", 1.0)
         self.declare_parameter("publish_rate_hz", 50.0)
         self.declare_parameter("topic", "cmd_vel")
+        self.declare_parameter("release_debounce_ms", 160)
 
         self.linear_speed = float(self.get_parameter("linear_speed").value)
         self.angular_speed = float(self.get_parameter("angular_speed").value)
         self.publish_rate_hz = float(self.get_parameter("publish_rate_hz").value)
+        self.release_debounce_ms = int(self.get_parameter("release_debounce_ms").value)
         topic = str(self.get_parameter("topic").value)
 
-        # Publishers
         self.cmd_pub = self.create_publisher(Twist, topic, 10)
         mode_qos = QoSProfile(
             depth=1,
@@ -174,150 +205,136 @@ class TutorialTeleop(Node):
         )
         self.mode_pub = self.create_publisher(String, "teleop_mode", mode_qos)
 
-        # State
-        self.mode_rotation = False  # False=Linear, True=Rotation
-        self.ref_frame_is_ee = False  # False=Base, True=EndEffector
-
-        # Input state
-        self._pressed: Set[str] = set()
-        self._quit = False
+        self.mode_rotation = False
+        self.ref_frame_is_ee = False
+        self._pressed_tokens = set()
+        self._keycode_to_token = {}
         self._lock = threading.Lock()
+        self._pending_release = {}
+        self._shutdown_requested = False
 
-        # Panel + local tty behavior
-        self._noecho = _NoEcho()
-        self._panel = BottomPanel()
-        self._panel.draw()
-
-        # Key listener with press/release (no repeat timeout window)
-        self._listener = keyboard.Listener(
-            on_press=self._on_press,
-            on_release=self._on_release,
-            suppress=False,
-        )
-        self._listener.start()
-
-        # Timer publish loop
+        self.window = TeleopWindow(self)
         self.timer = self.create_timer(1.0 / self.publish_rate_hz, self._tick)
-
-        # Initial teleop_mode
         self._publish_ref_frame()
 
-    # ---- helpers ----
-    def _mode_str(self) -> str:
+    def mode_str(self) -> str:
         return "Rotation" if self.mode_rotation else "Linear"
 
-    def _frame_str(self) -> str:
+    def frame_str(self) -> str:
         return "EndEffector" if self.ref_frame_is_ee else "Base"
 
     def _publish_ref_frame(self):
-        self.mode_pub.publish(String(data=self._frame_str()))
+        self.mode_pub.publish(String(data=self.frame_str()))
 
-    # ---- keyboard callbacks ----
-    def _on_press(self, key):
-        tok = _to_token(key)
-        if tok is None:
+    def _toggle_mode(self):
+        self.mode_rotation = not self.mode_rotation
+        self.window.refresh()
+
+    def _toggle_frame(self):
+        self.ref_frame_is_ee = not self.ref_frame_is_ee
+        self._publish_ref_frame()
+        self.window.refresh()
+
+    def on_key_press(self, event):
+        keycode = event.keycode
+        pending = self._pending_release.pop(keycode, None)
+        if pending is not None:
+            try:
+                self.window.root.after_cancel(pending)
+            except tk.TclError:
+                pass
+
+        token = _event_token(event)
+        if token is None:
             return
 
         with self._lock:
-            already_pressed = tok in self._pressed
-            self._pressed.add(tok)
+            already_down = keycode in self._keycode_to_token
+            self._keycode_to_token[keycode] = token
+            self._pressed_tokens.add(token)
 
-        # Ignore auto-repeat press events for already-held keys.
-        if already_pressed:
+        if token == "Tab" and not already_down:
+            self._toggle_mode()
             return
 
-        if tok == "tab":
-            self.mode_rotation = not self.mode_rotation
-            self._panel.mode = self._mode_str()
-            self._panel.draw()
-            return
+        if token == "m" and not already_down:
+            self._toggle_frame()
 
-        if tok == "m":
-            self.ref_frame_is_ee = not self.ref_frame_is_ee
-            self._panel.frame = self._frame_str()
-            self._publish_ref_frame()
-            self._panel.draw()
-            return
+    def on_key_release(self, event):
+        keycode = event.keycode
+        pending = self._pending_release.pop(keycode, None)
+        if pending is not None:
+            try:
+                self.window.root.after_cancel(pending)
+            except tk.TclError:
+                pass
 
-        if tok in ("esc", "q"):
-            self._quit = True
+        self._pending_release[keycode] = self.window.root.after(
+            self.release_debounce_ms,
+            lambda kc=keycode: self._finalize_key_release(kc),
+        )
 
-    def _on_release(self, key):
-        tok = _to_token(key)
-        if tok is None:
-            return
-
+    def _finalize_key_release(self, keycode):
+        self._pending_release.pop(keycode, None)
         with self._lock:
-            self._pressed.discard(tok)
+            token = self._keycode_to_token.pop(keycode, None)
+            if token is None:
+                return
+            if token not in self._keycode_to_token.values():
+                self._pressed_tokens.discard(token)
 
-    # ---- publish loop ----
+    def on_ctrl_c(self, _event):
+        self._shutdown_requested = True
+        return "break"
+
+    def shutdown_requested(self) -> bool:
+        return self._shutdown_requested
+
+    def clear_pressed_keys(self):
+        with self._lock:
+            self._pressed_tokens.clear()
+            self._keycode_to_token.clear()
+        for after_id in self._pending_release.values():
+            try:
+                self.window.root.after_cancel(after_id)
+            except tk.TclError:
+                pass
+        self._pending_release.clear()
+
+    def _active_keys(self):
+        with self._lock:
+            return set(self._pressed_tokens)
+
     def _tick(self):
-        if self._quit:
-            rclpy.shutdown()
-            return
-
-        with self._lock:
-            keys = set(self._pressed)
-
-        # Direction keys
-        w = "w" in keys
-        a = "a" in keys
-        s = "s" in keys
-        d = "d" in keys
-        z_plus = "space" in keys or "=" in keys or "+" in keys
-        z_minus = "-" in keys or "_" in keys
-        shift = "shift" in keys
-
-        # speed multiplier with SHIFT
-        mult = 2.0 if shift else 1.0
-        lin = self.linear_speed * mult
-        ang = self.angular_speed * mult
-
-        # build twist from currently held keys (simultaneous supported)
-        lx = ly = lz = rx = ry = rz = 0.0
-        if not self.mode_rotation:
-            if w:
-                lx += lin
-            if s:
-                lx -= lin
-            if d:
-                ly += lin
-            if a:
-                ly -= lin
-            if z_plus:
-                lz += lin
-            if z_minus:
-                lz -= lin
-        else:
-            if w:
-                rx += ang
-            if s:
-                rx -= ang
-            if d:
-                ry += ang
-            if a:
-                ry -= ang
-            if z_plus:
-                rz += ang
-            if z_minus:
-                rz -= ang
-
+        keys = self._active_keys()
         twist = Twist()
-        twist.linear.x, twist.linear.y, twist.linear.z = lx, ly, lz
-        twist.angular.x, twist.angular.y, twist.angular.z = rx, ry, rz
+        shift = "shift" in keys
+        shift_boost = shift and any(token in keys for token in ("w", "a", "s", "d", "z_plus", "z_minus"))
+        linear_speed = self.linear_speed * (2.0 if shift_boost else 1.0)
+        angular_speed = self.angular_speed * (2.0 if shift_boost else 1.0)
 
-        # publish
+        if not self.mode_rotation:
+            twist.linear.x = (+linear_speed if "w" in keys else 0.0) + (-linear_speed if "s" in keys else 0.0)
+            twist.linear.y = (-linear_speed if "a" in keys else 0.0) + (+linear_speed if "d" in keys else 0.0)
+            twist.linear.z = (+linear_speed if "z_plus" in keys else 0.0) + (-linear_speed if "z_minus" in keys else 0.0)
+        else:
+            twist.angular.x = (+angular_speed if "w" in keys else 0.0) + (-angular_speed if "s" in keys else 0.0)
+            twist.angular.y = (-angular_speed if "a" in keys else 0.0) + (+angular_speed if "d" in keys else 0.0)
+            twist.angular.z = (+angular_speed if "z_plus" in keys else 0.0) + (-angular_speed if "z_minus" in keys else 0.0)
+
         self.cmd_pub.publish(twist)
         self._publish_ref_frame()
 
+    def pump_ui(self):
+        self.window.pump()
+
     def destroy_node(self):
+        self.clear_pressed_keys()
         try:
-            if self._listener:
-                self._listener.stop()
+            self.cmd_pub.publish(Twist())
         except Exception:
             pass
-        self._panel.restore()
-        self._noecho.restore()
+        self.window.destroy()
         return super().destroy_node()
 
 
@@ -325,10 +342,16 @@ def main():
     rclpy.init()
     node = TutorialTeleop()
     try:
-        rclpy.spin(node)
+        while rclpy.ok() and not node.shutdown_requested():
+            node.pump_ui()
+            rclpy.spin_once(node, timeout_sec=0.0)
+            time.sleep(0.01)
+    except KeyboardInterrupt:
+        pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":
