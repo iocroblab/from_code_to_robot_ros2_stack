@@ -10,17 +10,21 @@ from rclpy.qos import QoSProfile, QoSDurabilityPolicy
 class TrajectoryPublisher(Node):
     def __init__(self):
         super().__init__('trajectory_publisher')
-        
+
         # Parameters
         self.declare_parameter('tracked_frame', 'tool0')
         self.declare_parameter('world_frame', 'world')
         self.declare_parameter('publish_rate', 30.0)
-        self.max_points = 200
-        
+        self.declare_parameter('num_points', 200)
+
         self.tracked_frame = self.get_parameter('tracked_frame').get_parameter_value().string_value
         self.world_frame = self.get_parameter('world_frame').get_parameter_value().string_value
         self.publish_rate = self.get_parameter('publish_rate').get_parameter_value().double_value
-        
+        self.max_points = self.get_parameter('num_points').get_parameter_value().integer_value
+        if self.max_points <= 0:
+            self.get_logger().warn('Parameter "num_points" must be > 0. Falling back to 200.')
+            self.max_points = 200
+
         # TF buffer and listener
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
@@ -35,7 +39,10 @@ class TrajectoryPublisher(Node):
         
         # Timer
         self.timer = self.create_timer(1.0/self.publish_rate, self.timer_callback)
-        self.get_logger().info(f'Trajectory publisher started for frame "{self.tracked_frame}" w.r.t "{self.world_frame}"')
+        self.get_logger().info(
+            f'Trajectory publisher started for frame "{self.tracked_frame}" '
+            f'w.r.t "{self.world_frame}" with num_points={self.max_points}'
+        )
     
     def timer_callback(self):
         try:
