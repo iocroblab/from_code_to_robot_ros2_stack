@@ -42,6 +42,9 @@ class SafetyNullifier(Node):
             name='velocity',
             topic=velocity_topic,
         )
+        self.get_logger().info(
+            'Safety node active. Controller commands will be nullified if they stop updating.'
+        )
 
     def _init_controller(self, name: str, topic: str):
         self.controllers[name] = {

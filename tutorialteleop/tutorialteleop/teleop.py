@@ -216,6 +216,9 @@ class TutorialTeleop(Node):
         self.window = TeleopWindow(self)
         self.timer = self.create_timer(1.0 / self.publish_rate_hz, self._tick)
         self._publish_ref_frame()
+        self.get_logger().info(
+            'Teleop active. Focus the teleop window to drive. Press Ctrl-C in the window or terminal to quit.'
+        )
 
     def mode_str(self) -> str:
         return "Rotation" if self.mode_rotation else "Linear"
