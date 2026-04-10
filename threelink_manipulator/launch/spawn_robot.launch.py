@@ -15,6 +15,7 @@ def launch_setup(context, *args, **kwargs):
 	launch_rviz = LaunchConfiguration("launch_rviz")
 	rviz_config_file = LaunchConfiguration("rviz_config_file")
 	gazebo_gui = LaunchConfiguration("gazebo_gui")
+	gazebo_verbosity = LaunchConfiguration("gazebo_verbosity")
 	world_file = LaunchConfiguration("world_file")
 	activate_joint_controller = LaunchConfiguration("activate_joint_controller")
 	initial_joint_controller = LaunchConfiguration("initial_joint_controller")
@@ -90,8 +91,8 @@ def launch_setup(context, *args, **kwargs):
 		launch_arguments={
 			"gz_args": IfElseSubstitution(
 				gazebo_gui,
-				if_value=[" -r -v 4 ", world_file],
-				else_value=[" -s -r -v 4 ", world_file],
+				if_value=[" -r -v ", gazebo_verbosity, " ", world_file],
+				else_value=[" -s -r -v ", gazebo_verbosity, " ", world_file],
 			)
 		}.items(),
 	)
@@ -203,6 +204,13 @@ def generate_launch_description():
 		)
 	)
 	declared_arguments.append(DeclareLaunchArgument("gazebo_gui", default_value="false", description="Launch Gazebo with GUI"))
+	declared_arguments.append(
+		DeclareLaunchArgument(
+			"gazebo_verbosity",
+			default_value="1",
+			description="Gazebo console verbosity level (0-4). Default 1 to reduce detachable-joint missing child warnings before payload spawn.",
+		)
+	)
 	declared_arguments.append(DeclareLaunchArgument(
     "world_file",
     default_value=PathJoinSubstitution([

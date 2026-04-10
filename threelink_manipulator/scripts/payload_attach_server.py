@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import subprocess
+import threading
 import time
 import math
 from typing import Optional, Tuple
@@ -14,7 +15,7 @@ from rclpy.node import Node
 from rclpy.parameter import Parameter
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
-from rclpy.executors import ExternalShutdownException
+from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from ros_gz_interfaces.msg import EntityFactory
 from ros_gz_interfaces.srv import ControlWorld, DeleteEntity, SpawnEntity
 from std_msgs.msg import Empty
@@ -274,11 +275,19 @@ class PayloadAttachServer(Node):
 
     def _call_service(self, client, request, label: str) -> Tuple[bool, Optional[object]]:
         future = client.call_async(request)
-        rclpy.spin_until_future_complete(self, future, timeout_sec=self.service_timeout_sec)
-        if not future.done():
+        done_event = threading.Event()
+        future.add_done_callback(lambda _: done_event.set())
+
+        if not done_event.wait(timeout=self.service_timeout_sec):
             self.get_logger().error(f'{label} service call timed out after {self.service_timeout_sec:.2f} seconds.')
             return False, None
-        response = future.result()
+
+        try:
+            response = future.result()
+        except Exception as exc:
+            self.get_logger().error(f'{label} service call raised an exception: {exc}')
+            return False, None
+
         if response is None:
             self.get_logger().error(f'{label} service call failed with no response.')
             return False, None
@@ -781,11 +790,14 @@ class PayloadAttachServer(Node):
 def main(args=None) -> None:
     rclpy.init(args=args)
     node = PayloadAttachServer()
+    executor = MultiThreadedExecutor(num_threads=4)
+    executor.add_node(node)
     try:
-        rclpy.spin(node)
+        executor.spin()
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
+        executor.shutdown()
         node.destroy_node()
         try:
             if rclpy.ok():
