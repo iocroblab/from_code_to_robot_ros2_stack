@@ -170,7 +170,8 @@ RUN mkdir -p src/modified-repositories && \
     fi && \
     rosdep update && \
     rosdep install --ignore-src --from-paths src -y && \
-    colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release 
+    source /opt/ros/jazzy/setup.bash && \
+    colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-DSILENCE_DEPRECATION_WARNINGS"
 
 
 WORKDIR /home/user
@@ -180,5 +181,3 @@ EXPOSE 8080
 
 
 CMD ["/bin/bash", "-c", "/usr/bin/supervisord -c /etc/supervisor/supervisord.conf"]
-
-
