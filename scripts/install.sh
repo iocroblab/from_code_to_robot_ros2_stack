@@ -48,6 +48,22 @@ ensure_command() {
   fi
 }
 
+source_ros_setup() {
+  local setup_file="/opt/ros/${ROS_DISTRO}/setup.bash"
+
+  if [ ! -f "$setup_file" ]; then
+    echo "ERROR: $setup_file not found."
+    echo "If you intended to install ROS first, run: bash install.sh fullnative"
+    exit 1
+  fi
+
+  # ROS setup scripts are not always safe with `set -u`
+  set +u
+  # shellcheck disable=SC1090
+  source "$setup_file"
+  set -u
+}
+
 # ------------------------
 # Docker tasks
 # ------------------------
@@ -218,17 +234,7 @@ install_ros2_jazzy_and_deps() {
 setup_workspace_native() {
   log "Setting up native workspace: $WS_DIR"
 
-  # shellcheck disable=SC1091
-    if [ -f "/opt/ros/${ROS_DISTRO}/setup.bash" ]; then
-    # ROS setup scripts are not always safe with `set -u`
-    set +u
-    source "/opt/ros/${ROS_DISTRO}/setup.bash"
-    set -u
-    else
-    echo "ERROR: /opt/ros/${ROS_DISTRO}/setup.bash not found."
-    echo "If you intended to install ROS first, run: bash install.sh fullnative"
-    exit 1
-    fi
+  source_ros_setup
 
   mkdir -p "$WS_DIR/src/modified-repositories"
   cd "$WS_DIR"
@@ -256,7 +262,8 @@ setup_workspace_native() {
   rosdep update
   rosdep install --ignore-src --from-paths src -y
 
-  colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
+  source_ros_setup
+  colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-DSILENCE_DEPRECATION_WARNINGS"
 
   log "Workspace build complete"
 }
