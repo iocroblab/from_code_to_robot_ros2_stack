@@ -170,8 +170,7 @@ RUN mkdir -p src/modified-repositories && \
     fi && \
     rosdep update && \
     rosdep install --ignore-src --from-paths src -y && \
-    source /opt/ros/jazzy/setup.bash && \
-    colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-DSILENCE_DEPRECATION_WARNINGS"
+    colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release 
 
 
 WORKDIR /home/user
