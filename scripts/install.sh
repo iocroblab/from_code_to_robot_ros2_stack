@@ -6,7 +6,7 @@ set -euo pipefail
 # Modes:
 #   fulldocker  -> install Docker Engine + build image + create named container (stopped)
 #   docker      -> build image + create named container (stopped)
-#   fullnative  -> install ROS 2 Jazzy + required apt packages + setup workspace (clone/vcs/rosdep/build)
+#   fullnative  -> install ROS 2 Jazzy + required apt packages + setup workspace (clone/rosdep/build)
 #   native      -> setup workspace only (assumes ROS 2 Jazzy + tools already installed)
 #
 # Notes:
@@ -203,8 +203,16 @@ install_ros2_jazzy_and_deps() {
     "ros-${ROS_DISTRO}-controller-manager" \
     "ros-${ROS_DISTRO}-turtlebot3-msgs"
 
+  # UR + joint_state_publisher packages previously pulled via vcs/source build
+  sudo apt install -y \
+    "ros-${ROS_DISTRO}-ur-client-library" \
+    "ros-${ROS_DISTRO}-ur-description" \
+    "ros-${ROS_DISTRO}-ur-robot-driver" \
+    "ros-${ROS_DISTRO}-ur-simulation-gz" \
+    "ros-${ROS_DISTRO}-joint-state-publisher"
+
   # Workspace tooling used later
-  sudo apt install -y git python3-vcstool python3-rosdep
+  sudo apt install -y git python3-rosdep
 
   # rosdep init/update (idempotent-ish)
   if [ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]; then
@@ -230,7 +238,7 @@ setup_workspace_native() {
     exit 1
     fi
 
-  mkdir -p "$WS_DIR/src/modified-repositories"
+  mkdir -p "$WS_DIR/src"
   cd "$WS_DIR"
 
   # Clone stack repo (branch jazzy)
@@ -239,17 +247,6 @@ setup_workspace_native() {
   else
     log "Stack repo already exists, updating..."
     (cd "$WS_DIR/src/from_code_to_robot_ros2_stack" && git fetch --depth 1 origin "$STACK_REPO_BRANCH" && git checkout "$STACK_REPO_BRANCH" && git pull --ff-only) || true
-  fi
-
-  # Import repos into modified-repositories (mirrors Dockerfile)
-  vcs import "$WS_DIR/src/modified-repositories" < "$WS_DIR/src/from_code_to_robot_ros2_stack/stack.repos"
-
-  # Optional repos file (mirrors Dockerfile logic)
-  OPTIONAL_REPOS_FILE="$WS_DIR/src/modified-repositories/Universal_Robots_ROS2_Driver/Universal_Robots_ROS2_Driver-not-released.${ROS_DISTRO}.repos"
-  if [ -f "$OPTIONAL_REPOS_FILE" ]; then
-    vcs import "$WS_DIR/src" --skip-existing --input "$OPTIONAL_REPOS_FILE"
-  else
-    echo "Optional repos file not found, skipping: $OPTIONAL_REPOS_FILE"
   fi
 
   # rosdep + build
@@ -297,7 +294,6 @@ case "$MODE" in
   native)
     # Minimal checks for workspace-only setup
     ensure_command git
-    ensure_command vcs
     ensure_command rosdep
     ensure_command colcon
     setup_workspace_native
