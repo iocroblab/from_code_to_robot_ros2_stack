@@ -74,7 +74,12 @@ RUN apt-get update &&\
     ros-jazzy-turtlebot3-msgs \
     ros-jazzy-ros2-control \
     ros-jazzy-ros2-controllers \
-    ros-jazzy-controller-manager
+    ros-jazzy-controller-manager \
+    ros-jazzy-ur-client-library \
+    ros-jazzy-ur-description \
+    ros-jazzy-ur-robot-driver \
+    ros-jazzy-ur-simulation-gz \
+    ros-jazzy-joint-state-publisher
 	
 
 # Root user
@@ -156,18 +161,11 @@ RUN sed -i '/\[supervisord\]/a user=root' /etc/supervisor/supervisord.conf
 RUN apt-get update && apt-get install -y git
 
 WORKDIR /home/user/fctr_ws
-RUN mkdir -p src/modified-repositories && \
+RUN mkdir -p src && \
     cd src && \
     git clone -b jazzy --depth 1 https://github.com/iocroblab/from_code_to_robot_ros2_stack.git  && \
     source /opt/ros/jazzy/setup.bash && \
     cd .. && \
-    vcs import src/modified-repositories < src/from_code_to_robot_ros2_stack/stack.repos && \
-    OPTIONAL_REPOS_FILE=src/modified-repositories/Universal_Robots_ROS2_Driver/Universal_Robots_ROS2_Driver-not-released.${ROS_DISTRO}.repos && \
-    if [ -f "${OPTIONAL_REPOS_FILE}" ]; then \
-      vcs import src --skip-existing --input "${OPTIONAL_REPOS_FILE}"; \
-    else \
-      echo "Optional repos file not found, skipping: ${OPTIONAL_REPOS_FILE}"; \
-    fi && \
     rosdep update && \
     rosdep install --ignore-src --from-paths src -y && \
     colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release 
